@@ -53,7 +53,7 @@ enum MarqueeConfiguration {
             return try parse(contents: contents)
         }
 
-        for candidate in ["barsaver.yaml", "barsaver.yml", "barsaver.conf"] {
+        for candidate in ["barsaver.yaml", "barsaver.yml"] {
             let localDefault = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
                 .appendingPathComponent(candidate)
             if FileManager.default.fileExists(atPath: localDefault.path) {

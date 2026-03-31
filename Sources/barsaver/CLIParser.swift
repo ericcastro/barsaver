@@ -41,7 +41,7 @@ enum CLIParser {
       barsaver --list-displays
       barsaver --displays external
       barsaver --displays 1,2
-      barsaver --config ~/barsaver.conf --displays all
+      barsaver --config ~/barsaver.yaml --displays all
     """
 
     static func parse(arguments: [String]) throws -> CLIOptions {

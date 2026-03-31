@@ -16,6 +16,34 @@ It behaves like a menu-bar screensaver rather than a menu-bar replacement: one o
 - Rebuilds overlays when displays are connected or disconnected
 - Builds marquee content from configurable blocks and plugins
 
+## Block Plugins
+
+The content lane is built from block plugins, so `barsaver` is easy to extend without touching the overlay/windowing side.
+
+Current built-in block types:
+
+- `static_text`
+  Displays a fixed string.
+- `timestamp`
+  Formats the current time using a `DateFormatter` format string.
+- `news_headline`
+  Fetches headlines from an RSS or Atom feed, refreshes the feed on `refresh_interval`, scrolls each item inside a fixed slot when needed, and only advances after that item's scroll has finished plus `cycle_interval`.
+- `crypto_ticker`
+  Fetches a spot price for symbols such as `BTCUSD` and `ETHUSD`.
+- `stock_ticker`
+  Fetches stock or ETF quotes for symbols such as `AAPL`, `MSFT`, or `SPY`.
+
+Each block can also provide an action URL, so the marquee can stay interactive:
+
+- `news_headline`
+  Opens the article URL for the currently visible headline.
+- `crypto_ticker`
+  Opens a chart page for the symbol on TradingView.
+- `stock_ticker`
+  Opens a chart page for the symbol on TradingView.
+
+To add a new content source, implement a `MarqueeBlockPlugin`, return a `MarqueeBlock`, and register it in `MarqueePluginRegistryValue`.
+
 ## Requirements
 
 - macOS 13 or later
@@ -65,10 +93,6 @@ barsaver --displays 1,2
 Run with a custom content configuration:
 
 ```bash
-barsaver --config ~/barsaver.yaml --displays all
-```
-
-```bash
 barsaver --config ./barsaver.example.yaml --displays all
 ```
 
@@ -76,7 +100,7 @@ barsaver --config ./barsaver.example.yaml --displays all
 barsaver --list-displays --displays external
 ```
 
-If `--config` is not provided, `barsaver` will look for `barsaver.yaml`, then `barsaver.yml`, then `barsaver.conf` in the current directory before falling back to its built-in defaults.
+If `--config` is not provided, `barsaver` will look for `barsaver.yaml` and then `barsaver.yml` in the current directory before falling back to its built-in defaults.
 
 ## Content Blocks
 
@@ -129,21 +153,6 @@ Supported refresh interval suffixes:
 - `1m`
 - `2h`
 
-## Built-In Plugins
-
-Current built-in block types:
-
-- `static_text`
-  Displays a fixed string.
-- `timestamp`
-  Formats the current time using a `DateFormatter` format string.
-- `news_headline`
-  Fetches headlines from an RSS or Atom feed, refreshes the feed on `refresh_interval`, scrolls each item inside a fixed slot when needed, and only advances after that item's scroll has finished plus `cycle_interval`.
-- `crypto_ticker`
-  Fetches a spot price for symbols such as `BTCUSD` and `ETHUSD`.
-- `stock_ticker`
-  Fetches stock or ETF quotes for symbols such as `AAPL`, `MSFT`, or `SPY`.
-
 Crypto prices currently use Coinbase's public spot-price endpoint:
 
 - [Coinbase Data API Prices](https://docs.cdp.coinbase.com/coinbase-app/track-apis/prices)
@@ -156,19 +165,6 @@ For `stock_ticker`, provide an Alpha Vantage API key either:
 
 - in the block as `api_key: "..."`, or
 - via the `ALPHA_VANTAGE_API_KEY` environment variable
-
-## Clickable Content
-
-Each block can provide an action URL. The marquee keeps those links attached to the visible text so segments can be clicked.
-
-- `news_headline`
-  Opens the article URL for the currently visible headline.
-- `crypto_ticker`
-  Opens a chart page for the symbol on TradingView.
-- `stock_ticker`
-  Opens a chart page for the symbol on TradingView.
-- `static_text` and `timestamp`
-  Do not currently attach actions.
 
 Because the overlay normally auto-hides as the pointer approaches the menu bar, hold the configured modifier key to keep the bar visible long enough to click it. While that modifier is held and the pointer is over the bar, the marquee pauses to make links easier to target.
 
@@ -184,23 +180,6 @@ For fixed-width nested scrolling blocks such as `news_headline`, these settings 
   Controls how long a fetched headline stays on screen after its inner scroll has finished.
 
 RSS headlines also include an item count suffix such as `1/8` so it is easier to tell how many fetched items are being rotated.
-
-## Extending Plugins
-
-The content system is intentionally small:
-
-- `MarqueeConfiguration` parses the config file into block definitions
-- `MarqueePluginRegistryValue` resolves block types to plugins
-- Each plugin builds a `MarqueeBlock`
-- `MarqueeContentController` joins block output into the final marquee string
-
-To add a new plugin:
-
-1. Create a type that conforms to `MarqueeBlockPlugin`.
-2. Create a block object that conforms to `MarqueeBlock`.
-3. Register the plugin in `MarqueePluginRegistryValue`.
-
-That keeps new content sources isolated from the overlay and windowing code.
 
 ## Testing
 
