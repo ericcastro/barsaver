@@ -4,6 +4,8 @@
 
 In its current form the app is launched from the command line, runs as a background AppKit process, and keeps one overlay window per selected display. When the cursor approaches the top edge of a display, the overlay fades away and stops intercepting mouse input so the menu bar takes over and can be used as you normally would. When the cursor leaves, the overlay returns.
 
+Same idea as a screensaver, so it's not meant to replace your menubar: only prevent it from staying static for too long - while still letting you work on the rest of the screen real state (more likely to refresh often, thus protected) giving you peace of mind that you won't see the macOS foreer printed in the OLED panel because your workflows keep a menubar always on, rarely changing.
+
 ## What It Does
 
 - Enumerates displays from the CLI
