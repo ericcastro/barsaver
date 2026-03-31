@@ -1,4 +1,4 @@
-# barsaver - a menubar screensaver for oled external displays
+# barsaver - a menubar screensaver for OLED displays
 
 `barsaver` is a macOS overlay that covers the menu bar when it is idle to help prevent OLED burn-in on external or built-in displays. It shows dynamic, non-static content and automatically fades away as the pointer approaches, so the normal menu bar stays instantly usable.
 
