@@ -24,6 +24,14 @@ protocol MarqueeBlock: AnyObject {
     func stop()
 }
 
+private final class ClosureBox {
+    let closure: () -> Void
+
+    init(_ closure: @escaping () -> Void) {
+        self.closure = closure
+    }
+}
+
 enum MarqueePluginError: LocalizedError {
     case unsupportedBlock(String)
     case missingSetting(block: String, key: String)
@@ -43,7 +51,8 @@ struct MarqueePluginRegistryValue {
         "static_text": StaticTextPlugin(),
         "timestamp": TimestampPlugin(),
         "news_headline": NewsHeadlinePlugin(),
-        "crypto_ticker": CryptoTickerPlugin()
+        "crypto_ticker": CryptoTickerPlugin(),
+        "stock_ticker": StockTickerPlugin()
     ]
 
     func makeBlocks(from definitions: [MarqueeBlockDefinition]) throws -> [MarqueeBlock] {
@@ -107,7 +116,7 @@ struct StaticTextPlugin: MarqueeBlockPlugin {
     }
 }
 
-final class TimestampBlock: MarqueeBlock {
+final class TimestampBlock: NSObject, MarqueeBlock {
     private let formatter: DateFormatter
     private var timer: Timer?
     private(set) var currentSegment = MarqueeSegment(prefixText: nil, text: "", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
@@ -115,13 +124,13 @@ final class TimestampBlock: MarqueeBlock {
     init(format: String) {
         formatter = DateFormatter()
         formatter.dateFormat = format
+        super.init()
     }
 
     func start(onUpdate: @escaping () -> Void) {
         refresh(onUpdate: onUpdate)
-        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            self?.refresh(onUpdate: onUpdate)
-        }
+        let box = ClosureBox(onUpdate)
+        timer = Timer.scheduledTimer(timeInterval: 30, target: self, selector: #selector(handleTimer(_:)), userInfo: box, repeats: true)
     }
 
     func stop() {
@@ -132,6 +141,14 @@ final class TimestampBlock: MarqueeBlock {
     private func refresh(onUpdate: @escaping () -> Void) {
         currentSegment = MarqueeSegment(prefixText: nil, text: formatter.string(from: Date()), actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
         onUpdate()
+    }
+
+    @objc
+    private func handleTimer(_ timer: Timer) {
+        guard let box = timer.userInfo as? ClosureBox else {
+            return
+        }
+        refresh(onUpdate: box.closure)
     }
 }
 
@@ -190,7 +207,7 @@ private final class RSSParserState: NSObject, XMLParserDelegate {
     }
 }
 
-final class NewsHeadlineBlock: MarqueeBlock {
+final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
     private let rssSource: URL
     private let refreshInterval: TimeInterval
     private let cycleInterval: TimeInterval
@@ -211,18 +228,15 @@ final class NewsHeadlineBlock: MarqueeBlock {
         self.prefix = prefix
         self.slotWidth = slotWidth
         self.innerScrollPause = innerScrollPause
+        super.init()
         self.currentSegment = MarqueeSegment(prefixText: normalizedPrefix(), text: "Loading headlines", actionURL: nil, slotWidth: slotWidth, allowsInnerScroll: true, innerScrollPause: innerScrollPause)
     }
 
     func start(onUpdate: @escaping () -> Void) {
         self.onUpdate = onUpdate
         refresh()
-        fetchTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
-            self?.refresh()
-        }
-        cycleTimer = Timer.scheduledTimer(withTimeInterval: cycleInterval, repeats: true) { [weak self] _ in
-            self?.advanceHeadline()
-        }
+        fetchTimer = Timer.scheduledTimer(timeInterval: refreshInterval, target: self, selector: #selector(handleFetchTimer), userInfo: nil, repeats: true)
+        cycleTimer = Timer.scheduledTimer(timeInterval: cycleInterval, target: self, selector: #selector(handleCycleTimer), userInfo: nil, repeats: true)
     }
 
     func stop() {
@@ -256,6 +270,16 @@ final class NewsHeadlineBlock: MarqueeBlock {
             }
             self.onUpdate?()
         }.resume()
+    }
+
+    @objc
+    private func handleFetchTimer() {
+        refresh()
+    }
+
+    @objc
+    private func handleCycleTimer() {
+        advanceHeadline()
     }
 
     private func advanceHeadline() {
@@ -317,7 +341,25 @@ private struct CoinbaseSpotResponse: Decodable {
     let data: Data
 }
 
-final class CryptoTickerBlock: MarqueeBlock {
+private struct AlphaVantageGlobalQuoteResponse: Decodable {
+    struct Quote: Decodable {
+        let symbol: String?
+        let price: String?
+
+        enum CodingKeys: String, CodingKey {
+            case symbol = "01. symbol"
+            case price = "05. price"
+        }
+    }
+
+    let globalQuote: Quote
+
+    enum CodingKeys: String, CodingKey {
+        case globalQuote = "Global Quote"
+    }
+}
+
+final class CryptoTickerBlock: NSObject, MarqueeBlock, @unchecked Sendable {
     private let symbol: String
     private let refreshInterval: TimeInterval
     private var timer: Timer?
@@ -327,14 +369,13 @@ final class CryptoTickerBlock: MarqueeBlock {
     init(symbol: String, refreshInterval: TimeInterval) {
         self.symbol = symbol.uppercased()
         self.refreshInterval = refreshInterval
+        super.init()
     }
 
     func start(onUpdate: @escaping () -> Void) {
         self.onUpdate = onUpdate
         refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
-            self?.refresh()
-        }
+        timer = Timer.scheduledTimer(timeInterval: refreshInterval, target: self, selector: #selector(handleTimer), userInfo: nil, repeats: true)
     }
 
     func stop() {
@@ -365,6 +406,11 @@ final class CryptoTickerBlock: MarqueeBlock {
         }.resume()
     }
 
+    @objc
+    private func handleTimer() {
+        refresh()
+    }
+
     private func currencyPair(from symbol: String) -> (base: String, quote: String)? {
         let normalized = symbol.replacingOccurrences(of: "-", with: "").uppercased()
         let knownQuotes = ["USD", "USDT", "EUR", "GBP"]
@@ -389,5 +435,89 @@ struct CryptoTickerPlugin: MarqueeBlockPlugin {
         }
         let refreshInterval = context.refreshIntervalParser(definition.settings["refresh_interval"]) ?? 60
         return CryptoTickerBlock(symbol: symbol, refreshInterval: refreshInterval)
+    }
+}
+
+final class StockTickerBlock: NSObject, MarqueeBlock, @unchecked Sendable {
+    private let symbol: String
+    private let refreshInterval: TimeInterval
+    private let apiKey: String?
+    private var timer: Timer?
+    private var onUpdate: (() -> Void)?
+    private(set) var currentSegment = MarqueeSegment(prefixText: nil, text: "Loading stock", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+
+    init(symbol: String, refreshInterval: TimeInterval, apiKey: String?) {
+        self.symbol = symbol.uppercased()
+        self.refreshInterval = refreshInterval
+        self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+        super.init()
+    }
+
+    func start(onUpdate: @escaping () -> Void) {
+        self.onUpdate = onUpdate
+        refresh()
+        timer = Timer.scheduledTimer(timeInterval: refreshInterval, target: self, selector: #selector(handleTimer), userInfo: nil, repeats: true)
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func refresh() {
+        guard let apiKey, !apiKey.isEmpty else {
+            currentSegment = MarqueeSegment(prefixText: nil, text: "\(symbol) set ALPHA_VANTAGE_API_KEY", actionURL: tradingViewURL(for: symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+            onUpdate?()
+            return
+        }
+
+        var components = URLComponents(string: "https://www.alphavantage.co/query")!
+        components.queryItems = [
+            URLQueryItem(name: "function", value: "GLOBAL_QUOTE"),
+            URLQueryItem(name: "symbol", value: symbol),
+            URLQueryItem(name: "apikey", value: apiKey)
+        ]
+        let request = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+            guard let self else { return }
+
+            let text: String
+            if
+                let data,
+                let response = try? JSONDecoder().decode(AlphaVantageGlobalQuoteResponse.self, from: data),
+                let price = response.globalQuote.price,
+                !price.isEmpty
+            {
+                let resolvedSymbol = response.globalQuote.symbol?.isEmpty == false ? response.globalQuote.symbol! : self.symbol
+                text = "\(resolvedSymbol) \(price) USD"
+            } else {
+                text = "\(self.symbol) unavailable"
+            }
+
+            self.currentSegment = MarqueeSegment(prefixText: nil, text: text, actionURL: self.tradingViewURL(for: self.symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+            self.onUpdate?()
+        }.resume()
+    }
+
+    @objc
+    private func handleTimer() {
+        refresh()
+    }
+
+    private func tradingViewURL(for symbol: String) -> URL? {
+        URL(string: "https://www.tradingview.com/symbols/\(symbol.uppercased())/")
+    }
+}
+
+struct StockTickerPlugin: MarqueeBlockPlugin {
+    let type = "stock_ticker"
+
+    func makeBlock(from definition: MarqueeBlockDefinition, context: MarqueePluginContext) throws -> MarqueeBlock {
+        guard let symbol = definition.settings["symbol"] ?? definition.settings["value"], !symbol.isEmpty else {
+            throw MarqueePluginError.missingSetting(block: type, key: "symbol")
+        }
+        let refreshInterval = context.refreshIntervalParser(definition.settings["refresh_interval"]) ?? 60
+        let apiKey = definition.settings["api_key"] ?? ProcessInfo.processInfo.environment["ALPHA_VANTAGE_API_KEY"]
+        return StockTickerBlock(symbol: symbol, refreshInterval: refreshInterval, apiKey: apiKey)
     }
 }

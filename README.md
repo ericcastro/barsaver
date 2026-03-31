@@ -11,7 +11,6 @@ The app is launched from the command line, runs as a background AppKit process, 
 - Creates one always-on-top overlay per selected display
 - Covers exactly the menu bar region using `NSStatusBar.system.thickness`
 - Draws an opaque black bar with a scrolling text marquee
-- Can reserve the privacy-indicator corner and mask the system recording/location dot
 - Applies subtle pixel drift over time to avoid a perfectly static image
 - Fades out near the top edge of a display and restores itself when the pointer moves away
 - Rebuilds overlays when displays are connected or disconnected
@@ -98,7 +97,7 @@ block_timestamp:
   format: "HH:mm"
 block_static_text: "OLED-safe menubar"
 block_news_headline:
-  prefix: "🇬🇧"
+  prefix: "BBC"
   rss_source: "https://feeds.bbci.co.uk/news/world/rss.xml"
   refresh_interval: "5m"
   cycle_interval: "10s"
@@ -106,6 +105,9 @@ block_news_headline:
   inner_scroll_pause: "0.9s"
 block_crypto_ticker:
   symbol: "BTCUSD"
+  refresh_interval: "1m"
+block_stock_ticker:
+  symbol: "SPY"
   refresh_interval: "1m"
 block_crypto_ticker:
   symbol: "ETHUSD"
@@ -137,12 +139,21 @@ Current built-in block types:
   Fetches headlines from an RSS or Atom feed, refreshes the feed on one interval, and rotates through the fetched items on a separate interval.
 - `block_crypto_ticker`
   Fetches a spot price for symbols such as `BTCUSD` and `ETHUSD`.
+- `block_stock_ticker`
+  Fetches stock or ETF quotes for symbols such as `AAPL`, `MSFT`, or `SPY`.
 
 Crypto prices currently use Coinbase's public spot-price endpoint:
 
 - [Coinbase Data API Prices](https://docs.cdp.coinbase.com/coinbase-app/track-apis/prices)
 
-Stock and ETF quote blocks are not implemented yet. The plugin system is in place for them, but there is no built-in `block_stock_ticker` today.
+Stock and ETF quotes currently use Alpha Vantage's `GLOBAL_QUOTE` endpoint:
+
+- [Alpha Vantage Documentation](https://www.alphavantage.co/documentation/)
+
+For `block_stock_ticker`, provide an Alpha Vantage API key either:
+
+- in the block as `api_key: "..."`, or
+- via the `ALPHA_VANTAGE_API_KEY` environment variable
 
 ## Clickable Content
 
@@ -152,11 +163,13 @@ Each block can provide an action URL. The marquee keeps those links attached to 
   Opens the article URL for the currently visible headline.
 - `block_crypto_ticker`
   Opens a chart page for the symbol on TradingView.
+- `block_stock_ticker`
+  Opens a chart page for the symbol on TradingView.
 - `block_static_text` and `block_timestamp`
   Do not currently attach actions.
 
 Because the overlay normally auto-hides as the pointer approaches the menu bar, hold the configured modifier key to keep the bar visible long enough to click it.
-Clickable text stays white by default and only turns yellow while hovered.
+Clickable RSS headline text is yellow by default and turns cyan while hovered. Pinned prefixes stay white.
 
 For fixed-width nested scrolling blocks such as `block_news_headline`, these settings are also available:
 
