@@ -8,9 +8,17 @@ let package = Package(
     platforms: [
         .macOS(.v13)
     ],
+    dependencies: [
+        .package(url: "https://github.com/jpsim/Yams.git", from: "6.0.1")
+    ],
     targets: [
         .executableTarget(
-            name: "barsaver"
+            name: "barsaver",
+            dependencies: ["Yams"]
+        ),
+        .testTarget(
+            name: "barsaverTests",
+            dependencies: ["barsaver"]
         ),
     ]
 )

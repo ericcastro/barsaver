@@ -1,0 +1,26 @@
+hold_to_click_key: option
+
+blocks:
+  - type: static_text
+    value: barsaver
+  - type: timestamp
+    format: HH:mm
+  - type: static_text
+    value: OLED-safe menubar
+  - type: news_headline
+    prefix: BBC
+    rss_source: https://feeds.bbci.co.uk/news/world/rss.xml
+    refresh_interval: 5m
+    cycle_interval: 10s
+    slot_width: 360
+    inner_scroll_pause: 0.9s
+  - type: crypto_ticker
+    symbol: BTCUSD
+    refresh_interval: 1m
+  - type: stock_ticker
+    symbol: SPY
+    refresh_interval: 1m
+    # api_key: YOUR_ALPHA_VANTAGE_API_KEY
+  - type: crypto_ticker
+    symbol: ETHUSD
+    refresh_interval: 1m

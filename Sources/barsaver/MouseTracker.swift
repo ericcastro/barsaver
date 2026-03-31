@@ -67,22 +67,16 @@ final class MouseTracker {
         let mouseLocation = NSEvent.mouseLocation
 
         for display in DisplayManager.currentDisplays() {
-            let isWithinDisplayWidth = mouseLocation.x >= display.frame.minX && mouseLocation.x <= display.frame.maxX
-            let distanceFromTop = display.frame.maxY - mouseLocation.y
             let wasRevealed = displayStates[display.displayID] ?? false
 
-            let shouldReveal: Bool
-            if holdToClickActive {
-                shouldReveal = false
-            } else if isWithinDisplayWidth && distanceFromTop <= 0 {
-                shouldReveal = true
-            } else if isWithinDisplayWidth && mouseLocation.y >= display.frame.minY {
-                let enterThreshold = threshold
-                let exitThreshold = threshold + hysteresis
-                shouldReveal = wasRevealed ? distanceFromTop <= exitThreshold : distanceFromTop <= enterThreshold
-            } else {
-                shouldReveal = false
-            }
+            let shouldReveal = MouseRevealPolicy.shouldReveal(
+                mouseLocation: mouseLocation,
+                displayFrame: display.frame,
+                wasRevealed: wasRevealed,
+                holdToClickActive: holdToClickActive,
+                threshold: threshold,
+                hysteresis: hysteresis
+            )
 
             if shouldReveal != wasRevealed {
                 displayStates[display.displayID] = shouldReveal

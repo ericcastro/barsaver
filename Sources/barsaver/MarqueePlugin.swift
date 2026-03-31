@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 struct MarqueePluginContext {
@@ -56,40 +57,12 @@ struct MarqueePluginRegistryValue {
     ]
 
     func makeBlocks(from definitions: [MarqueeBlockDefinition]) throws -> [MarqueeBlock] {
-        let context = MarqueePluginContext(refreshIntervalParser: parseRefreshInterval(_:))
+        let context = MarqueePluginContext(refreshIntervalParser: RefreshIntervalParser.parse(_:))
         return try definitions.map { definition in
             guard let plugin = plugins[definition.type] else {
                 throw MarqueePluginError.unsupportedBlock(definition.type)
             }
             return try plugin.makeBlock(from: definition, context: context)
-        }
-    }
-
-    private func parseRefreshInterval(_ value: String?) -> TimeInterval? {
-        guard let value, !value.isEmpty else {
-            return nil
-        }
-
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if let seconds = TimeInterval(trimmed) {
-            return seconds
-        }
-
-        let digits = trimmed.prefix { $0.isNumber }
-        let suffix = trimmed.dropFirst(digits.count)
-        guard let amount = TimeInterval(digits), !suffix.isEmpty else {
-            return nil
-        }
-
-        switch suffix {
-        case "s":
-            return amount
-        case "m":
-            return amount * 60
-        case "h":
-            return amount * 3600
-        default:
-            return nil
         }
     }
 }
@@ -208,6 +181,8 @@ private final class RSSParserState: NSObject, XMLParserDelegate {
 }
 
 final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
+    private let measurementFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+    private let innerScrollSpeed: CGFloat = 28
     private let rssSource: URL
     private let refreshInterval: TimeInterval
     private let cycleInterval: TimeInterval
@@ -236,7 +211,6 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
         self.onUpdate = onUpdate
         refresh()
         fetchTimer = Timer.scheduledTimer(timeInterval: refreshInterval, target: self, selector: #selector(handleFetchTimer), userInfo: nil, repeats: true)
-        cycleTimer = Timer.scheduledTimer(timeInterval: cycleInterval, target: self, selector: #selector(handleCycleTimer), userInfo: nil, repeats: true)
     }
 
     func stop() {
@@ -253,6 +227,7 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
 
             guard let data else {
                 self.currentSegment = MarqueeSegment(prefixText: self.normalizedPrefix(), text: "RSS unavailable", actionURL: nil, slotWidth: self.slotWidth, allowsInnerScroll: true, innerScrollPause: self.innerScrollPause)
+                self.invalidateCycleTimer()
                 self.onUpdate?()
                 return
             }
@@ -265,8 +240,10 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
                 self.headlines = state.headlines
                 self.currentIndex = 0
                 self.currentSegment = self.segment(for: self.headlines[self.currentIndex])
+                self.scheduleNextHeadline()
             } else {
                 self.currentSegment = MarqueeSegment(prefixText: self.normalizedPrefix(), text: "No RSS headlines", actionURL: nil, slotWidth: self.slotWidth, allowsInnerScroll: true, innerScrollPause: self.innerScrollPause)
+                self.invalidateCycleTimer()
             }
             self.onUpdate?()
         }.resume()
@@ -288,7 +265,33 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
         }
         currentIndex = (currentIndex + 1) % headlines.count
         currentSegment = segment(for: headlines[currentIndex])
+        scheduleNextHeadline()
         onUpdate?()
+    }
+
+    private func scheduleNextHeadline() {
+        invalidateCycleTimer()
+        guard !headlines.isEmpty else {
+            return
+        }
+        cycleTimer = Timer.scheduledTimer(timeInterval: headlineDisplayDuration(for: currentSegment), target: self, selector: #selector(handleCycleTimer), userInfo: nil, repeats: false)
+    }
+
+    private func invalidateCycleTimer() {
+        cycleTimer?.invalidate()
+        cycleTimer = nil
+    }
+
+    private func headlineDisplayDuration(for segment: MarqueeSegment) -> TimeInterval {
+        NewsHeadlineTiming.displayDuration(
+            text: segment.text,
+            slotWidth: slotWidth,
+            font: measurementFont,
+            allowsInnerScroll: segment.allowsInnerScroll,
+            innerScrollPause: innerScrollPause,
+            postScrollPause: cycleInterval,
+            scrollSpeed: innerScrollSpeed
+        )
     }
 
     private func segment(for headline: RSSHeadline) -> MarqueeSegment {

@@ -1,4 +1,5 @@
 import Foundation
+import Yams
 
 struct MarqueeBlockDefinition {
     let type: String
@@ -12,17 +13,20 @@ struct MarqueeConfigurationFile {
 
 enum MarqueeConfigurationError: LocalizedError {
     case missingPath(String)
-    case invalidLine(String)
-    case orphanedSetting(String)
+    case invalidYAML(String)
+    case invalidRootObject
+    case invalidBlock(Int)
 
     var errorDescription: String? {
         switch self {
         case .missingPath(let path):
             return "Configuration file not found at '\(path)'."
-        case .invalidLine(let line):
-            return "Invalid configuration line: \(line)"
-        case .orphanedSetting(let line):
-            return "Found a block setting without a preceding block: \(line)"
+        case .invalidYAML(let description):
+            return "Invalid YAML configuration: \(description)"
+        case .invalidRootObject:
+            return "Configuration root must be a YAML mapping."
+        case .invalidBlock(let index):
+            return "Block at index \(index) must be a YAML mapping with a 'type' field."
         }
     }
 }
@@ -49,77 +53,68 @@ enum MarqueeConfiguration {
             return try parse(contents: contents)
         }
 
-        let localDefault = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent("barsaver.conf")
-        if FileManager.default.fileExists(atPath: localDefault.path) {
-            let contents = try String(contentsOf: localDefault, encoding: .utf8)
-            return try parse(contents: contents)
+        for candidate in ["barsaver.yaml", "barsaver.yml", "barsaver.conf"] {
+            let localDefault = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                .appendingPathComponent(candidate)
+            if FileManager.default.fileExists(atPath: localDefault.path) {
+                let contents = try String(contentsOf: localDefault, encoding: .utf8)
+                return try parse(contents: contents)
+            }
         }
 
         return MarqueeConfigurationFile(settings: defaultSettings, blocks: defaultBlocks)
     }
 
-    private static func parse(contents: String) throws -> MarqueeConfigurationFile {
-        var settings = defaultSettings
-        var definitions: [MarqueeBlockDefinition] = []
-        var currentType: String?
-        var currentSettings: [String: String] = [:]
-
-        func flushCurrent() {
-            if let currentType {
-                definitions.append(MarqueeBlockDefinition(type: currentType, settings: currentSettings))
-            }
-            currentType = nil
-            currentSettings = [:]
-        }
-
-        for rawLine in contents.components(separatedBy: .newlines) {
-            let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") {
-                continue
-            }
-
-            let isIndented = rawLine.first?.isWhitespace == true
-            guard let colonIndex = trimmed.firstIndex(of: ":") else {
-                throw MarqueeConfigurationError.invalidLine(rawLine)
-            }
-
-            let key = trimmed[..<colonIndex].trimmingCharacters(in: .whitespacesAndNewlines)
-            let rawValue = trimmed[trimmed.index(after: colonIndex)...].trimmingCharacters(in: .whitespacesAndNewlines)
-            let value = unquote(rawValue)
-
-            if isIndented {
-                guard currentType != nil else {
-                    throw MarqueeConfigurationError.orphanedSetting(rawLine)
-                }
-                currentSettings[key] = value
-            } else if key.hasPrefix("block_") {
-                flushCurrent()
-                currentType = String(key.dropFirst("block_".count))
-                if !value.isEmpty {
-                    currentSettings["value"] = value
-                }
-            } else {
-                flushCurrent()
-                settings[key] = value
-            }
-        }
-
-        flushCurrent()
-
-        return MarqueeConfigurationFile(
-            settings: settings,
-            blocks: definitions.isEmpty ? defaultBlocks : definitions
-        )
+    static func parseForTesting(_ contents: String) throws -> MarqueeConfigurationFile {
+        try parse(contents: contents)
     }
 
-    private static func unquote(_ value: String) -> String {
-        guard value.count >= 2 else {
-            return value
+    private static func parse(contents: String) throws -> MarqueeConfigurationFile {
+        let loaded: Any
+        do {
+            loaded = try Yams.load(yaml: contents) as Any
+        } catch {
+            throw MarqueeConfigurationError.invalidYAML(error.localizedDescription)
         }
-        if (value.hasPrefix("\"") && value.hasSuffix("\"")) || (value.hasPrefix("'") && value.hasSuffix("'")) {
-            return String(value.dropFirst().dropLast())
+
+        guard let root = loaded as? [String: Any] else {
+            throw MarqueeConfigurationError.invalidRootObject
         }
-        return value
+
+        var settings = defaultSettings
+        for (key, value) in root where key != "blocks" {
+            settings[key] = stringify(value)
+        }
+
+        let definitions: [MarqueeBlockDefinition]
+        if let blockItems = root["blocks"] as? [Any] {
+            definitions = try blockItems.enumerated().map { index, item in
+                guard var block = item as? [String: Any], let type = block.removeValue(forKey: "type").map(stringify), !type.isEmpty else {
+                    throw MarqueeConfigurationError.invalidBlock(index)
+                }
+
+                let settings = Dictionary(uniqueKeysWithValues: block.map { key, value in
+                    (key, stringify(value))
+                })
+                return MarqueeBlockDefinition(type: type, settings: settings)
+            }
+        } else {
+            definitions = defaultBlocks
+        }
+
+        return MarqueeConfigurationFile(settings: settings, blocks: definitions.isEmpty ? defaultBlocks : definitions)
+    }
+
+    private static func stringify(_ value: Any) -> String {
+        switch value {
+        case let string as String:
+            return string
+        case let number as NSNumber:
+            return number.stringValue
+        case let bool as Bool:
+            return bool ? "true" : "false"
+        default:
+            return String(describing: value)
+        }
     }
 }

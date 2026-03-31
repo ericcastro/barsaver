@@ -52,16 +52,7 @@ enum DisplayManager {
     }
 
     static func selectedDisplays(for selection: CLIOptions.DisplaySelection) -> [DisplayInfo] {
-        let displays = currentDisplays()
-
-        switch selection {
-        case .all:
-            return displays
-        case .external:
-            return displays.filter { !$0.isMain }
-        case .indices(let indices):
-            return displays.filter { indices.contains($0.index) }
-        }
+        DisplaySelectionResolver.select(selection, from: currentDisplays())
     }
 
     static func screen(for displayInfo: DisplayInfo) -> NSScreen? {

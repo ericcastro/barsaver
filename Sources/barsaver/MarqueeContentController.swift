@@ -24,17 +24,19 @@ final class MarqueeContentController {
     }
 
     private func publish() {
-        let segments = blocks
-            .map(\.currentSegment)
-            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-
-        let snapshot = MarqueeSnapshot(
-            text: segments.isEmpty ? "barsaver" : segments.map(\.text).joined(separator: "   •   "),
-            segments: segments.isEmpty ? [MarqueeSegment(prefixText: nil, text: "barsaver", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)] : segments
-        )
+        let snapshot = Self.makeSnapshot(from: blocks.map(\.currentSegment))
 
         Task { @MainActor [updateHandler] in
             updateHandler?(snapshot)
         }
+    }
+
+    static func makeSnapshot(from segments: [MarqueeSegment]) -> MarqueeSnapshot {
+        let nonEmptySegments = segments.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+        return MarqueeSnapshot(
+            text: nonEmptySegments.isEmpty ? "barsaver" : nonEmptySegments.map(\.text).joined(separator: "   •   "),
+            segments: nonEmptySegments.isEmpty ? [MarqueeSegment(prefixText: nil, text: "barsaver", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)] : nonEmptySegments
+        )
     }
 }
