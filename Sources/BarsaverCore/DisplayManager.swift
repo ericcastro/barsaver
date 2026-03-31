@@ -1,23 +1,30 @@
 import AppKit
 import CoreGraphics
 
-struct DisplayInfo: Hashable {
-    let index: Int
-    let displayID: CGDirectDisplayID
-    let frame: CGRect
-    let isMain: Bool
+public struct DisplayInfo: Hashable {
+    public let index: Int
+    public let displayID: CGDirectDisplayID
+    public let frame: CGRect
+    public let isMain: Bool
 
-    var resolutionDescription: String {
+    public var resolutionDescription: String {
         "\(Int(frame.width))x\(Int(frame.height))"
     }
 
-    var originDescription: String {
+    public var originDescription: String {
         "(\(Int(frame.origin.x)), \(Int(frame.origin.y)))"
+    }
+
+    public init(index: Int, displayID: CGDirectDisplayID, frame: CGRect, isMain: Bool) {
+        self.index = index
+        self.displayID = displayID
+        self.frame = frame
+        self.isMain = isMain
     }
 }
 
-enum DisplayManager {
-    static func currentDisplays() -> [DisplayInfo] {
+public enum DisplayManager {
+    public static func currentDisplays() -> [DisplayInfo] {
         let screenFrames = Dictionary(uniqueKeysWithValues: NSScreen.screens.map { screen in
             (displayID(for: screen), screen.frame)
         })
@@ -51,7 +58,7 @@ enum DisplayManager {
             }
     }
 
-    static func selectedDisplays(for selection: CLIOptions.DisplaySelection) -> [DisplayInfo] {
+    public static func selectedDisplays(for selection: DisplaySelection) -> [DisplayInfo] {
         DisplaySelectionResolver.select(selection, from: currentDisplays())
     }
 
@@ -83,7 +90,7 @@ enum DisplayManager {
         )
     }
 
-    static func printDisplays() {
+    public static func printDisplays() {
         for display in currentDisplays() {
             let mainMarker = display.isMain ? " yes" : " no"
             print("[\(display.index)] \(display.resolutionDescription) origin \(display.originDescription) main:\(mainMarker)")

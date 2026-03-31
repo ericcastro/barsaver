@@ -1,4 +1,5 @@
 hold_to_click_key: option
+display_selection: all
 
 blocks:
   - type: static_text

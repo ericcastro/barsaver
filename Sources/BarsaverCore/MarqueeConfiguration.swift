@@ -1,14 +1,24 @@
 import Foundation
 import Yams
 
-struct MarqueeBlockDefinition {
-    let type: String
-    let settings: [String: String]
+public struct MarqueeBlockDefinition: Sendable {
+    public let type: String
+    public let settings: [String: String]
+
+    public init(type: String, settings: [String : String]) {
+        self.type = type
+        self.settings = settings
+    }
 }
 
-struct MarqueeConfigurationFile {
-    let settings: [String: String]
-    let blocks: [MarqueeBlockDefinition]
+public struct MarqueeConfigurationFile: Sendable {
+    public let settings: [String: String]
+    public let blocks: [MarqueeBlockDefinition]
+
+    public init(settings: [String : String], blocks: [MarqueeBlockDefinition]) {
+        self.settings = settings
+        self.blocks = blocks
+    }
 }
 
 enum MarqueeConfigurationError: LocalizedError {
@@ -31,9 +41,10 @@ enum MarqueeConfigurationError: LocalizedError {
     }
 }
 
-enum MarqueeConfiguration {
+public enum MarqueeConfiguration {
     static let defaultSettings: [String: String] = [
-        "hold_to_click_key": "option"
+        "hold_to_click_key": "option",
+        "display_selection": "all"
     ]
 
     static let defaultBlocks: [MarqueeBlockDefinition] = [
@@ -42,7 +53,7 @@ enum MarqueeConfiguration {
         MarqueeBlockDefinition(type: "static_text", settings: ["value": "OLED-safe menubar"])
     ]
 
-    static func load(from path: String?) throws -> MarqueeConfigurationFile {
+    public static func load(from path: String?) throws -> MarqueeConfigurationFile {
         if let path {
             let url = URL(fileURLWithPath: NSString(string: path).expandingTildeInPath)
             guard FileManager.default.fileExists(atPath: url.path) else {
@@ -67,6 +78,16 @@ enum MarqueeConfiguration {
 
     static func parseForTesting(_ contents: String) throws -> MarqueeConfigurationFile {
         try parse(contents: contents)
+    }
+
+    public static func displaySelection(from configuration: MarqueeConfigurationFile) throws -> DisplaySelection {
+        try DisplaySelectionParser.parseOptional(configuration.settings["display_selection"]) ?? .all
+    }
+
+    public static func save(_ configuration: MarqueeConfigurationFile, to url: URL) throws {
+        let yaml = render(configuration)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try yaml.write(to: url, atomically: true, encoding: .utf8)
     }
 
     private static func parse(contents: String) throws -> MarqueeConfigurationFile {
@@ -116,5 +137,75 @@ enum MarqueeConfiguration {
         default:
             return String(describing: value)
         }
+    }
+
+    private static func render(_ configuration: MarqueeConfigurationFile) -> String {
+        var lines: [String] = []
+
+        for key in orderedTopLevelKeys(configuration.settings) {
+            guard let value = configuration.settings[key] else { continue }
+            lines.append("\(key): \(yamlScalar(value))")
+        }
+
+        if !lines.isEmpty {
+            lines.append("")
+        }
+
+        lines.append("blocks:")
+        for block in configuration.blocks {
+            lines.append("  - type: \(yamlScalar(block.type))")
+            for key in orderedBlockKeys(for: block) {
+                guard let value = block.settings[key] else { continue }
+                lines.append("    \(key): \(yamlScalar(value))")
+            }
+        }
+
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private static func orderedTopLevelKeys(_ settings: [String: String]) -> [String] {
+        let preferred = ["hold_to_click_key", "display_selection"]
+        let remainder = settings.keys
+            .filter { !preferred.contains($0) }
+            .sorted()
+        return preferred.filter { settings[$0] != nil } + remainder
+    }
+
+    private static func orderedBlockKeys(for block: MarqueeBlockDefinition) -> [String] {
+        let preferred: [String]
+        switch block.type {
+        case "static_text":
+            preferred = ["value"]
+        case "timestamp":
+            preferred = ["format", "value"]
+        case "news_headline":
+            preferred = ["prefix", "rss_source", "refresh_interval", "cycle_interval", "slot_width", "inner_scroll_pause"]
+        case "crypto_ticker":
+            preferred = ["symbol", "refresh_interval"]
+        case "stock_ticker":
+            preferred = ["symbol", "refresh_interval", "api_key"]
+        default:
+            preferred = []
+        }
+
+        let remainder = block.settings.keys
+            .filter { !preferred.contains($0) }
+            .sorted()
+        return preferred.filter { block.settings[$0] != nil } + remainder
+    }
+
+    private static func yamlScalar(_ value: String) -> String {
+        let plainAllowed = !value.isEmpty &&
+            value.range(of: #"^[A-Za-z0-9_./:+,\-]+$"#, options: .regularExpression) != nil &&
+            !["true", "false", "null", "~"].contains(value.lowercased())
+
+        if plainAllowed {
+            return value
+        }
+
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
     }
 }

@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import barsaver
+@testable import BarsaverCore
 
 final class NewsHeadlineTimingTests: XCTestCase {
     private let font = NSFont.systemFont(ofSize: 12, weight: .medium)

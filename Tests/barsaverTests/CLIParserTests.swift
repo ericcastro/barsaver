@@ -1,18 +1,18 @@
 import XCTest
-@testable import barsaver
+@testable import BarsaverCore
 
 final class CLIParserTests: XCTestCase {
     func testParsesListDisplaysAndExternalSelection() throws {
         let options = try CLIParser.parse(arguments: ["--list-displays", "--displays", "external"])
         XCTAssertTrue(options.shouldListDisplays)
-        XCTAssertEqual(options.selection, .external)
+        XCTAssertEqual(options.selectionOverride, .external)
         XCTAssertNil(options.configPath)
     }
 
     func testParsesIndicesAndConfigPath() throws {
-        let options = try CLIParser.parse(arguments: ["--config", "~/barsaver.conf", "--displays", "1,3"])
-        XCTAssertEqual(options.selection, .indices([1, 3]))
-        XCTAssertEqual(options.configPath, "~/barsaver.conf")
+        let options = try CLIParser.parse(arguments: ["--config", "~/barsaver.yaml", "--displays", "1,3"])
+        XCTAssertEqual(options.selectionOverride, .indices([1, 3]))
+        XCTAssertEqual(options.configPath, "~/barsaver.yaml")
     }
 
     func testRejectsInvalidIndex() {

@@ -1,25 +1,25 @@
 import Foundation
 
-struct CLIOptions {
-    enum DisplaySelection: Equatable {
-        case all
-        case external
-        case indices(Set<Int>)
-    }
+public struct CLIOptions {
+    public let shouldListDisplays: Bool
+    public let selectionOverride: DisplaySelection?
+    public let configPath: String?
 
-    let shouldListDisplays: Bool
-    let selection: DisplaySelection
-    let configPath: String?
+    public init(shouldListDisplays: Bool, selectionOverride: DisplaySelection?, configPath: String?) {
+        self.shouldListDisplays = shouldListDisplays
+        self.selectionOverride = selectionOverride
+        self.configPath = configPath
+    }
 }
 
-enum CLIParserError: LocalizedError {
+public enum CLIParserError: LocalizedError {
     case missingDisplaySelection
     case missingConfigPath
     case invalidDisplaySelection(String)
     case invalidIndex(String)
     case unsupportedArgument(String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .missingDisplaySelection:
             return "Missing value for --displays."
@@ -35,8 +35,8 @@ enum CLIParserError: LocalizedError {
     }
 }
 
-enum CLIParser {
-    static let usage = """
+public enum CLIParser {
+    public static let usage = """
     barsaver examples:
       barsaver --list-displays
       barsaver --displays external
@@ -44,9 +44,9 @@ enum CLIParser {
       barsaver --config ~/barsaver.yaml --displays all
     """
 
-    static func parse(arguments: [String]) throws -> CLIOptions {
+    public static func parse(arguments: [String]) throws -> CLIOptions {
         var shouldListDisplays = false
-        var selection: CLIOptions.DisplaySelection = .all
+        var selectionOverride: DisplaySelection?
         var configPath: String?
 
         var iterator = arguments.makeIterator()
@@ -58,7 +58,7 @@ enum CLIParser {
                 guard let value = iterator.next() else {
                     throw CLIParserError.missingDisplaySelection
                 }
-                selection = try parseDisplaySelection(value)
+                selectionOverride = try DisplaySelectionParser.parse(value)
             case "--config":
                 guard let value = iterator.next() else {
                     throw CLIParserError.missingConfigPath
@@ -72,31 +72,6 @@ enum CLIParser {
             }
         }
 
-        return CLIOptions(shouldListDisplays: shouldListDisplays, selection: selection, configPath: configPath)
-    }
-
-    private static func parseDisplaySelection(_ rawValue: String) throws -> CLIOptions.DisplaySelection {
-        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        switch value {
-        case "all":
-            return .all
-        case "external":
-            return .external
-        default:
-            let indices = try Set(value.split(separator: ",").map { token -> Int in
-                let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard let index = Int(trimmed), index >= 0 else {
-                    throw CLIParserError.invalidIndex(trimmed)
-                }
-                return index
-            })
-
-            guard !indices.isEmpty else {
-                throw CLIParserError.invalidDisplaySelection(rawValue)
-            }
-
-            return .indices(indices)
-        }
+        return CLIOptions(shouldListDisplays: shouldListDisplays, selectionOverride: selectionOverride, configPath: configPath)
     }
 }

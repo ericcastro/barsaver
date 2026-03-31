@@ -1,24 +1,33 @@
 import AppKit
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let selection: CLIOptions.DisplaySelection
+public final class BarsaverRuntime: NSObject {
     private let contentController: MarqueeContentController
     private let holdToClickModifier: NSEvent.ModifierFlags?
     private var overlays: [CGDirectDisplayID: OverlayController] = [:]
     private var selectedDisplayIDs: Set<CGDirectDisplayID> = []
     private var mouseTracker: MouseTracker?
-    private var signalSources: [DispatchSourceSignal] = []
+    private var hasStarted = false
 
-    init(selection: CLIOptions.DisplaySelection, contentController: MarqueeContentController, holdToClickModifier: NSEvent.ModifierFlags?) {
-        self.selection = selection
-        self.contentController = contentController
-        self.holdToClickModifier = holdToClickModifier
+    public var selection: DisplaySelection {
+        didSet {
+            guard hasStarted else { return }
+            applyCurrentDisplaySelection()
+            mouseTracker?.reset(for: DisplayManager.selectedDisplays(for: selection))
+        }
     }
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.prohibited)
-        installSignalHandlers()
+    public init(configuration: MarqueeConfigurationFile, selection: DisplaySelection) throws {
+        self.selection = selection
+        self.contentController = MarqueeContentController(blocks: try MarqueePluginRegistryValue().makeBlocks(from: configuration.blocks))
+        self.holdToClickModifier = InteractionConfiguration.modifierFlags(for: configuration.settings["hold_to_click_key"])
+        super.init()
+    }
+
+    public func start() {
+        guard !hasStarted else { return }
+        hasStarted = true
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleScreenParametersChanged),
@@ -33,11 +42,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    public func stop() {
+        guard hasStarted else { return }
+        hasStarted = false
+        NotificationCenter.default.removeObserver(self)
         mouseTracker?.stop()
-        signalSources.forEach { $0.cancel() }
         overlays.values.forEach { $0.close() }
         overlays.removeAll()
+        selectedDisplayIDs.removeAll()
     }
 
     @objc
@@ -78,19 +90,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         mouseTracker?.start()
         mouseTracker?.reset(for: DisplayManager.selectedDisplays(for: selection))
-    }
-
-    private func installSignalHandlers() {
-        signal(SIGINT, SIG_IGN)
-        signal(SIGTERM, SIG_IGN)
-
-        for signalValue in [SIGINT, SIGTERM] {
-            let source = DispatchSource.makeSignalSource(signal: signalValue, queue: .main)
-            source.setEventHandler {
-                NSApp.terminate(nil)
-            }
-            source.resume()
-            signalSources.append(source)
-        }
     }
 }

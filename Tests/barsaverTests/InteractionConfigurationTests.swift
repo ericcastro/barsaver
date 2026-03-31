@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import barsaver
+@testable import BarsaverCore
 
 final class InteractionConfigurationTests: XCTestCase {
     func testMapsKnownModifierNames() {

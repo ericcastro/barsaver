@@ -1,5 +1,5 @@
 import XCTest
-@testable import barsaver
+@testable import BarsaverCore
 
 final class MarqueeConfigurationTests: XCTestCase {
     func testParsesSettingsAndBlocks() throws {

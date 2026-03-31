@@ -12,13 +12,25 @@ let package = Package(
         .package(url: "https://github.com/jpsim/Yams.git", from: "6.0.1")
     ],
     targets: [
+        .target(
+            name: "BarsaverCore",
+            dependencies: ["Yams"],
+            path: "Sources/BarsaverCore"
+        ),
         .executableTarget(
             name: "barsaver",
-            dependencies: ["Yams"]
+            dependencies: ["BarsaverCore"],
+            path: "Sources/barsaver-cli"
+        ),
+        .executableTarget(
+            name: "barsaver-app",
+            dependencies: ["BarsaverCore"],
+            path: "Sources/barsaver-app"
         ),
         .testTarget(
             name: "barsaverTests",
-            dependencies: ["barsaver"]
+            dependencies: ["BarsaverCore"],
+            path: "Tests/barsaverTests"
         ),
     ]
 )

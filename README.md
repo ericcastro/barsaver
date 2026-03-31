@@ -2,7 +2,7 @@
 
 `barsaver` is a macOS menu bar overlay that helps reduce OLED burn-in by replacing a mostly static menu bar with dynamic scrolling content. It automatically fades away as the pointer approaches, so the normal menu bar stays instantly usable.
 
-It behaves like a menu-bar screensaver rather than a menu-bar replacement: one overlay per selected display, aligned to the menu bar region, with click-through reveal near the top edge. In its current form it runs as a lightweight AppKit background process launched from the command line.
+It behaves like a menu-bar screensaver rather than a menu-bar replacement: one overlay per selected display, aligned to the menu bar region, with click-through reveal near the top edge. The project now has a shared core with two frontends: the CLI utility and a menu bar app shell.
 
 ## What It Does
 
@@ -66,6 +66,8 @@ install -m 755 .build/release/barsaver /usr/local/bin/barsaver
 
 ## Usage
 
+CLI:
+
 List displays:
 
 ```bash
@@ -102,6 +104,21 @@ barsaver --list-displays --displays external
 
 If `--config` is not provided, `barsaver` will look for `barsaver.yaml` and then `barsaver.yml` in the current directory before falling back to its built-in defaults.
 
+Menu bar frontend:
+
+```bash
+barsaver-app
+```
+
+The menu bar app is intentionally minimal for now:
+
+- launch at login toggle
+- display target submenu
+- open YAML config in your editor
+- reload config
+- open wiki / repo links
+- quit
+
 ## Content Blocks
 
 The marquee is built from a list of blocks. If no config file is provided, `barsaver` uses a small default set:
@@ -114,6 +131,7 @@ The config format is YAML:
 
 ```yaml
 hold_to_click_key: option
+display_selection: all
 
 blocks:
   - type: static_text
@@ -146,6 +164,8 @@ Top-level settings currently supported:
 
 - `hold_to_click_key`
   Holds the overlay visible so links can be clicked without auto-hide kicking in. Supported values: `option`, `command`, `control`, `shift`, `capslock`, `fn`.
+- `display_selection`
+  Default display target for the shared runtime. Supported values: `all`, `external`, or a comma-separated index list such as `1,2`.
 
 Supported refresh interval suffixes:
 
@@ -213,11 +233,13 @@ Some content plugins depend on external network sources. If a feed or ticker end
 
 The code is organized into a few focused pieces:
 
-- `CLIParser` handles command-line arguments
+- `BarsaverCore` contains the shared overlay engine, block/plugin system, config loading, display selection, and runtime coordination
+- `barsaver` is the CLI frontend
+- `barsaver-app` is the menu bar frontend shell
 - `DisplayManager` provides deterministic display ordering and selection
 - `OverlayController` owns one overlay window per display
 - `MouseTracker` watches pointer position and controls reveal/hide behavior
 - `ContentView` renders the marquee and background using AppKit and Core Animation
 - `MarqueeConfiguration`, `MarqueePlugin`, and `MarqueeContentController` handle block-based scrolling content
 
-This is an AppKit-first command-line utility. A separate GUI app can sit on top later without changing the core overlay/content pipeline.
+The menu bar app currently runs as a SwiftPM-built AppKit executable. For production-quality no-Dock behavior and login-item packaging, the next step is to wrap that frontend in a proper Xcode app target and keep `BarsaverCore` unchanged underneath.

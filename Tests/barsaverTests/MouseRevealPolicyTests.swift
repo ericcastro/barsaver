@@ -1,6 +1,6 @@
 import CoreGraphics
 import XCTest
-@testable import barsaver
+@testable import BarsaverCore
 
 final class MouseRevealPolicyTests: XCTestCase {
     private let frame = CGRect(x: 0, y: 0, width: 1920, height: 1080)

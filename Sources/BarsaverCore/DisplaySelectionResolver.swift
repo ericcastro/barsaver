@@ -1,5 +1,5 @@
 enum DisplaySelectionResolver {
-    static func select(_ selection: CLIOptions.DisplaySelection, from displays: [DisplayInfo]) -> [DisplayInfo] {
+    static func select(_ selection: DisplaySelection, from displays: [DisplayInfo]) -> [DisplayInfo] {
         switch selection {
         case .all:
             return displays

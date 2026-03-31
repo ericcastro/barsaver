@@ -1,7 +1,7 @@
 import AppKit
 
-enum InteractionConfiguration {
-    static func modifierFlags(for value: String?) -> NSEvent.ModifierFlags? {
+public enum InteractionConfiguration {
+    public static func modifierFlags(for value: String?) -> NSEvent.ModifierFlags? {
         guard let value else {
             return .option
         }
