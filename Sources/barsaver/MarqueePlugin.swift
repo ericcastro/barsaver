@@ -186,6 +186,7 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
     private let rssSource: URL
     private let refreshInterval: TimeInterval
     private let cycleInterval: TimeInterval
+    private let cyclePhaseOffset: TimeInterval
     private let prefix: String
     private let slotWidth: CGFloat
     private let innerScrollPause: TimeInterval
@@ -194,12 +195,14 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
     private var onUpdate: (() -> Void)?
     private var headlines: [RSSHeadline] = []
     private var currentIndex = 0
+    private var hasAppliedInitialPhaseOffset = false
     private(set) var currentSegment = MarqueeSegment(prefixText: nil, text: "Loading headlines", actionURL: nil, slotWidth: 360, allowsInnerScroll: true, innerScrollPause: 0.9)
 
     init(rssSource: URL, refreshInterval: TimeInterval, cycleInterval: TimeInterval, prefix: String, slotWidth: CGFloat, innerScrollPause: TimeInterval) {
         self.rssSource = rssSource
         self.refreshInterval = refreshInterval
         self.cycleInterval = cycleInterval
+        self.cyclePhaseOffset = Self.makePhaseOffset(seed: "\(rssSource.absoluteString)|\(prefix)", cycleInterval: cycleInterval)
         self.prefix = prefix
         self.slotWidth = slotWidth
         self.innerScrollPause = innerScrollPause
@@ -224,28 +227,39 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
         let request = URLRequest(url: rssSource, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
         URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
             guard let self else { return }
-
-            guard let data else {
-                self.currentSegment = MarqueeSegment(prefixText: self.normalizedPrefix(), text: "RSS unavailable", actionURL: nil, slotWidth: self.slotWidth, allowsInnerScroll: true, innerScrollPause: self.innerScrollPause)
-                self.invalidateCycleTimer()
-                self.onUpdate?()
-                return
-            }
-
-            let parser = XMLParser(data: data)
-            let state = RSSParserState()
-            parser.delegate = state
-
-            if parser.parse(), !state.headlines.isEmpty {
-                self.headlines = state.headlines
-                self.currentIndex = 0
-                self.currentSegment = self.segment(for: self.headlines[self.currentIndex])
-                self.scheduleNextHeadline()
+            let parsedHeadlines: [RSSHeadline]
+            if let data {
+                let parser = XMLParser(data: data)
+                let state = RSSParserState()
+                parser.delegate = state
+                parsedHeadlines = parser.parse() ? state.headlines : []
             } else {
-                self.currentSegment = MarqueeSegment(prefixText: self.normalizedPrefix(), text: "No RSS headlines", actionURL: nil, slotWidth: self.slotWidth, allowsInnerScroll: true, innerScrollPause: self.innerScrollPause)
-                self.invalidateCycleTimer()
+                parsedHeadlines = []
             }
-            self.onUpdate?()
+
+            DispatchQueue.main.async {
+                if data == nil {
+                    self.currentSegment = MarqueeSegment(prefixText: self.normalizedPrefix(), text: "RSS unavailable", actionURL: nil, slotWidth: self.slotWidth, allowsInnerScroll: true, innerScrollPause: self.innerScrollPause)
+                    self.invalidateCycleTimer()
+                } else if !parsedHeadlines.isEmpty {
+                    let previousHeadlineTitle = self.headlines.indices.contains(self.currentIndex) ? self.headlines[self.currentIndex].title : nil
+                    self.headlines = parsedHeadlines
+                    if
+                        let previousHeadlineTitle,
+                        let preservedIndex = parsedHeadlines.firstIndex(where: { $0.title == previousHeadlineTitle })
+                    {
+                        self.currentIndex = preservedIndex
+                    } else if self.currentIndex >= parsedHeadlines.count {
+                        self.currentIndex = 0
+                    }
+                    self.currentSegment = self.segment(for: self.headlines[self.currentIndex])
+                    self.scheduleNextHeadline()
+                } else {
+                    self.currentSegment = MarqueeSegment(prefixText: self.normalizedPrefix(), text: "No RSS headlines", actionURL: nil, slotWidth: self.slotWidth, allowsInnerScroll: true, innerScrollPause: self.innerScrollPause)
+                    self.invalidateCycleTimer()
+                }
+                self.onUpdate?()
+            }
         }.resume()
     }
 
@@ -274,7 +288,12 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
         guard !headlines.isEmpty else {
             return
         }
-        cycleTimer = Timer.scheduledTimer(timeInterval: headlineDisplayDuration(for: currentSegment), target: self, selector: #selector(handleCycleTimer), userInfo: nil, repeats: false)
+        var duration = headlineDisplayDuration(for: currentSegment)
+        if !hasAppliedInitialPhaseOffset {
+            duration += cyclePhaseOffset
+            hasAppliedInitialPhaseOffset = true
+        }
+        cycleTimer = Timer.scheduledTimer(timeInterval: duration, target: self, selector: #selector(handleCycleTimer), userInfo: nil, repeats: false)
     }
 
     private func invalidateCycleTimer() {
@@ -309,6 +328,17 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
     private func normalizedPrefix() -> String? {
         let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func makePhaseOffset(seed: String, cycleInterval: TimeInterval) -> TimeInterval {
+        guard cycleInterval > 0 else {
+            return 0
+        }
+        let hash = seed.utf8.reduce(0) { partial, byte in
+            (partial &* 31 &+ Int(byte)) & 0x7fffffff
+        }
+        let ratio = Double(hash % 1000) / 1000.0
+        return ratio * min(cycleInterval * 0.6, 4.0)
     }
 }
 
@@ -404,8 +434,10 @@ final class CryptoTickerBlock: NSObject, MarqueeBlock, @unchecked Sendable {
                 text = "\(pair.base)\(pair.quote) unavailable"
             }
 
-            self.currentSegment = MarqueeSegment(prefixText: nil, text: text, actionURL: self.tradingViewURL(for: self.symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
-            self.onUpdate?()
+            DispatchQueue.main.async {
+                self.currentSegment = MarqueeSegment(prefixText: nil, text: text, actionURL: self.tradingViewURL(for: self.symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+                self.onUpdate?()
+            }
         }.resume()
     }
 
@@ -497,8 +529,10 @@ final class StockTickerBlock: NSObject, MarqueeBlock, @unchecked Sendable {
                 text = "\(self.symbol) unavailable"
             }
 
-            self.currentSegment = MarqueeSegment(prefixText: nil, text: text, actionURL: self.tradingViewURL(for: self.symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
-            self.onUpdate?()
+            DispatchQueue.main.async {
+                self.currentSegment = MarqueeSegment(prefixText: nil, text: text, actionURL: self.tradingViewURL(for: self.symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+                self.onUpdate?()
+            }
         }.resume()
     }
 

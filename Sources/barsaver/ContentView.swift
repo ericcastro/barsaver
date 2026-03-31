@@ -74,6 +74,7 @@ final class ContentView: NSView {
         let parentFade = min(36, max(14, bounds.width * 0.025))
         let fadeRatio = bounds.width > 0 ? parentFade / bounds.width : 0.04
         marqueeMaskLayer.locations = [0, NSNumber(value: Double(fadeRatio)), NSNumber(value: Double(1 - fadeRatio)), 1]
+        layoutSegments(animated: marqueeTimer != nil, changedIndices: Set(currentSnapshot.segments.indices), forceInnerRelayout: true)
         layoutMarquee(restartAnimation: marqueeOffsetX == 0)
         refreshTrackingArea()
     }
@@ -140,7 +141,7 @@ final class ContentView: NSView {
 
         applyText(to: snapshot)
         updateContentsScale()
-        layoutSegments(animated: animated, changedIndices: changedIndices)
+        layoutSegments(animated: animated, changedIndices: changedIndices, forceInnerRelayout: false)
         layoutMarquee(restartAnimation: false, preferredMinX: marqueeOffsetX)
         updatePointerAndPauseState()
     }
@@ -210,7 +211,7 @@ final class ContentView: NSView {
         })
     }
 
-    private func layoutSegments(animated: Bool, changedIndices: Set<Int>) {
+    private func layoutSegments(animated: Bool, changedIndices: Set<Int>, forceInnerRelayout: Bool) {
         let textHeight = font.ascender - font.descender + 2
         let y = max(0, floor((bounds.height - textHeight) / 2) - 1)
         let attributes: [NSAttributedString.Key: Any] = [.font: font]
@@ -234,17 +235,27 @@ final class ContentView: NSView {
             }
             let textWidth = ceil((segment.text as NSString).size(withAttributes: attributes).width)
             let slotWidth = max(segment.slotWidth ?? textWidth, min(textWidth, max(80, bounds.width * 0.2)))
+            let shouldRelayoutInner =
+                forceInnerRelayout ||
+                changedIndices.contains(index) ||
+                abs(visual.slotLayer.bounds.width - slotWidth) > 0.5 ||
+                abs(visual.textLayer.bounds.width - textWidth) > 0.5
+
             visual.slotLayer.frame = CGRect(x: cursor, y: y, width: slotWidth, height: textHeight)
-            layoutInnerText(
-                in: visual.slotLayer,
-                for: visual.textLayer,
-                textWidth: textWidth,
-                slotWidth: slotWidth,
-                shouldScroll: segment.allowsInnerScroll,
-                pauseDuration: segment.innerScrollPause ?? 0.7,
-                animated: animated,
-                changed: changedIndices.contains(index)
-            )
+            if shouldRelayoutInner {
+                layoutInnerText(
+                    in: visual.slotLayer,
+                    for: visual.textLayer,
+                    textWidth: textWidth,
+                    slotWidth: slotWidth,
+                    shouldScroll: segment.allowsInnerScroll,
+                    pauseDuration: segment.innerScrollPause ?? 0.7,
+                    animated: animated,
+                    changed: changedIndices.contains(index)
+                )
+            } else {
+                visual.textLayer.frame.size.height = max(1, textHeight)
+            }
             cursor += slotWidth
 
             if index < separatorLayers.count {

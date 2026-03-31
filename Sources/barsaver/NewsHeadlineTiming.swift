@@ -21,6 +21,6 @@ enum NewsHeadlineTiming {
         let fadeWidth = min(18, max(8, slotWidth * 0.08))
         let travelDistance = max(0, textWidth - slotWidth + (fadeWidth * 2))
         let travelDuration = max(1.8, TimeInterval(travelDistance / scrollSpeed))
-        return innerScrollPause + travelDuration + postScrollPause
+        return innerScrollPause + travelDuration + innerScrollPause + postScrollPause
     }
 }
