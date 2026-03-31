@@ -1,10 +1,8 @@
 # barsaver - a menubar screensaver for OLED displays
 
-`barsaver` is a macOS overlay that covers the menu bar when it is idle, mainly to help prevent burn-in on OLED displays, while also staying useful by displaying scrolling blocks with dynamic, non-static content and automatically fades away as the mouse pointer approaches, so the normal menu bar stays instantly usable. macOS menubars are for the most part a gray rectangle that could damage your external OLED display (or built-in, if Apple ever puts them in MacBooks) if continuously on at such state without refreshing its pixels.
+`barsaver` is a macOS menu bar overlay that helps reduce OLED burn-in by replacing a mostly static menu bar with dynamic scrolling content. It automatically fades away as the pointer approaches, so the normal menu bar stays instantly usable.
 
-In its current form the app is launched from the command line, runs as a background AppKit process, and keeps one overlay window per selected display. When the cursor approaches the top edge of a display, the overlay fades away and stops intercepting mouse input so the menu bar takes over and can be used as you normally would. When the cursor leaves, the overlay returns.
-
-Same idea as a screensaver, so it's not meant to replace your menubar: only prevent it from staying static for too long - while still letting you work on the rest of the screen real state (more likely to refresh often, thus protected) giving you peace of mind that you won't see the macOS foreer printed in the OLED panel because your workflows keep a menubar always on, rarely changing.
+It behaves like a menu-bar screensaver rather than a menu-bar replacement: one overlay per selected display, aligned to the menu bar region, with click-through reveal near the top edge. In its current form it runs as a lightweight AppKit background process launched from the command line.
 
 ## What It Does
 
