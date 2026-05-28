@@ -9,6 +9,13 @@ final class ContentView: NSView {
         let textLayer: CATextLayer
     }
 
+    private struct InnerScrollLayout {
+        let startX: CGFloat
+        let endX: CGFloat
+        let pauseDuration: TimeInterval
+        let travelDuration: TimeInterval
+    }
+
     private let backgroundLayer = CALayer()
     private let marqueeViewportLayer = CALayer()
     private let marqueeContainerLayer = CALayer()
@@ -19,9 +26,10 @@ final class ContentView: NSView {
     private let linkColor = NSColor.systemYellow
     private let hoverLinkColor = NSColor.systemCyan
     private let marqueeSpeed: CGFloat = 36
-    private var currentSnapshot = MarqueeSnapshot(text: "barsaver", segments: [MarqueeSegment(prefixText: nil, text: "barsaver", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)])
+    private var currentSnapshot = MarqueeSnapshot(text: "barsaver", segments: [MarqueeSegment(blockID: UUID(), prefixText: nil, text: "barsaver", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)])
     private var segmentVisuals: [SegmentVisual] = []
     private var separatorLayers: [CATextLayer] = []
+    private var innerScrollLayouts: [InnerScrollLayout?] = []
     private var segmentURLs: [URL?] = []
     private var marqueeWidth: CGFloat = 0
     private var marqueeOffsetX: CGFloat = 0
@@ -32,7 +40,9 @@ final class ContentView: NSView {
     private var mouseInside = false
     private var holdToClickActive = false
     private var hoveredSegmentIndex: Int?
+    private var manualReadSegmentIndex: Int?
     var onOpenURL: ((URL) -> Void)?
+    var onInteractiveSegmentHover: ((UUID?, Bool) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -123,7 +133,7 @@ final class ContentView: NSView {
         layoutMarquee(restartAnimation: true)
     }
 
-    func setHoldToClickModifier(_ modifier: NSEvent.ModifierFlags?) {}
+    func setHoldToClickBinding(_ binding: HoldToClickBinding?) {}
 
     func setHoldToClickActive(_ active: Bool) {
         holdToClickActive = active
@@ -170,6 +180,12 @@ final class ContentView: NSView {
             let visual = segmentVisuals.removeLast()
             visual.prefixLayer.removeFromSuperlayer()
             visual.slotLayer.removeFromSuperlayer()
+        }
+
+        if innerScrollLayouts.count < segmentCount {
+            innerScrollLayouts.append(contentsOf: Array(repeating: nil, count: segmentCount - innerScrollLayouts.count))
+        } else if innerScrollLayouts.count > segmentCount {
+            innerScrollLayouts.removeLast(innerScrollLayouts.count - segmentCount)
         }
 
         let separatorCount = max(0, segmentCount - 1)
@@ -251,7 +267,8 @@ final class ContentView: NSView {
                     shouldScroll: segment.allowsInnerScroll,
                     pauseDuration: segment.innerScrollPause ?? 0.7,
                     animated: animated,
-                    changed: changedIndices.contains(index)
+                    changed: changedIndices.contains(index),
+                    segmentIndex: index
                 )
             } else {
                 visual.textLayer.frame.size.height = max(1, textHeight)
@@ -268,11 +285,13 @@ final class ContentView: NSView {
         marqueeWidth = cursor
     }
 
-    private func layoutInnerText(in slotLayer: CALayer, for textLayer: CATextLayer, textWidth: CGFloat, slotWidth: CGFloat, shouldScroll: Bool, pauseDuration: TimeInterval, animated: Bool, changed: Bool) {
+    private func layoutInnerText(in slotLayer: CALayer, for textLayer: CATextLayer, textWidth: CGFloat, slotWidth: CGFloat, shouldScroll: Bool, pauseDuration: TimeInterval, animated: Bool, changed: Bool, segmentIndex: Int) {
         textLayer.removeAnimation(forKey: "innerMarquee")
+        textLayer.removeAnimation(forKey: "innerReverseMarquee")
         textLayer.removeAnimation(forKey: "segmentFade")
         slotLayer.mask = nil
         textLayer.frame = CGRect(x: 0, y: 0, width: textWidth, height: max(1, textLayer.superlayer?.bounds.height ?? 1))
+        innerScrollLayouts[segmentIndex] = nil
 
         if changed, animated {
             let fade = CATransition()
@@ -283,6 +302,7 @@ final class ContentView: NSView {
         }
 
         guard shouldScroll, textWidth > slotWidth else {
+            applyInnerTranslation(0, to: textLayer)
             return
         }
 
@@ -305,20 +325,10 @@ final class ContentView: NSView {
         let endX = -(textWidth - slotWidth + fadeWidth)
         let travelDistance = abs(endX - startX)
         let travelDuration = max(1.8, CFTimeInterval(travelDistance / 28))
-        let totalDuration = pauseDuration + travelDuration
-        let startPauseRatio = pauseDuration / totalDuration
-        let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
-        animation.values = [startX, startX, endX]
-        animation.keyTimes = [0, NSNumber(value: startPauseRatio), 1]
-        animation.duration = totalDuration
-        animation.repeatCount = 1
-        animation.isRemovedOnCompletion = false
-        animation.fillMode = .forwards
-        animation.timingFunctions = [
-            CAMediaTimingFunction(name: .easeInEaseOut),
-            CAMediaTimingFunction(name: .linear)
-        ]
-        textLayer.add(animation, forKey: "innerMarquee")
+        let layout = InnerScrollLayout(startX: startX, endX: endX, pauseDuration: pauseDuration, travelDuration: travelDuration)
+        innerScrollLayouts[segmentIndex] = layout
+        applyInnerTranslation(startX, to: textLayer)
+        startForwardInnerMarquee(on: textLayer, layout: layout)
     }
 
     private func layoutMarquee(restartAnimation: Bool, preferredMinX: CGFloat? = nil) {
@@ -392,6 +402,7 @@ final class ContentView: NSView {
     }
 
     private func updatePointerAndPauseState() {
+        let previousManualReadIndex = manualReadSegmentIndex
         let hoveredIndex: Int?
         if mouseInside, let window {
             let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
@@ -409,6 +420,13 @@ final class ContentView: NSView {
         if hoveredSegmentIndex != hoveredIndex {
             hoveredSegmentIndex = hoveredIndex
             refreshSegmentColors()
+        }
+
+        updateManualReadMode(previousManualReadIndex: previousManualReadIndex)
+
+        if !holdToClickActive, let previousManualReadIndex = manualReadSegmentIndex {
+            setManualReadMode(active: false, forSegmentAt: previousManualReadIndex)
+            manualReadSegmentIndex = nil
         }
 
         setMarqueePaused(mouseInside && holdToClickActive)
@@ -464,11 +482,105 @@ final class ContentView: NSView {
 
     private func hoveredSegmentIndex(at point: CGPoint) -> Int? {
         for (index, visual) in segmentVisuals.enumerated() {
-            let activeFrame = visual.prefixLayer.frame.union(visual.slotLayer.frame).offsetBy(dx: marqueeOffsetX, dy: 0)
+            let activeFrame = visual.slotLayer.frame.offsetBy(dx: marqueeOffsetX, dy: 0)
             if activeFrame.contains(point) {
                 return index
             }
         }
         return nil
+    }
+
+    private func updateManualReadMode(previousManualReadIndex: Int?) {
+        let targetIndex: Int?
+        if
+            holdToClickActive,
+            let hoveredSegmentIndex,
+            currentSnapshot.segments.indices.contains(hoveredSegmentIndex),
+            currentSnapshot.segments[hoveredSegmentIndex].allowsInnerScroll,
+            currentSnapshot.segments[hoveredSegmentIndex].actionURL != nil
+        {
+            targetIndex = hoveredSegmentIndex
+        } else {
+            targetIndex = nil
+        }
+
+        if previousManualReadIndex != targetIndex, let previousManualReadIndex {
+            setManualReadMode(active: false, forSegmentAt: previousManualReadIndex)
+        }
+        if manualReadSegmentIndex != targetIndex, let targetIndex {
+            setManualReadMode(active: true, forSegmentAt: targetIndex)
+        }
+        manualReadSegmentIndex = targetIndex
+    }
+
+    private func setManualReadMode(active: Bool, forSegmentAt index: Int) {
+        guard currentSnapshot.segments.indices.contains(index), segmentVisuals.indices.contains(index) else {
+            return
+        }
+        let segment = currentSnapshot.segments[index]
+        let textLayer = segmentVisuals[index].textLayer
+
+        if active {
+            onInteractiveSegmentHover?(segment.blockID, true)
+            guard let layout = innerScrollLayouts[index] else { return }
+            let currentX = currentInnerTranslation(for: textLayer)
+            startReverseInnerMarquee(on: textLayer, from: currentX, to: layout.startX)
+        } else {
+            onInteractiveSegmentHover?(segment.blockID, false)
+            guard let layout = innerScrollLayouts[index] else { return }
+            applyInnerTranslation(layout.startX, to: textLayer)
+            startForwardInnerMarquee(on: textLayer, layout: layout)
+        }
+    }
+
+    private func startForwardInnerMarquee(on textLayer: CATextLayer, layout: InnerScrollLayout) {
+        textLayer.removeAnimation(forKey: "innerReverseMarquee")
+        textLayer.removeAnimation(forKey: "innerMarquee")
+        let totalDuration = layout.pauseDuration + layout.travelDuration
+        let startPauseRatio = layout.pauseDuration / totalDuration
+        applyInnerTranslation(layout.endX, to: textLayer)
+        let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
+        animation.values = [layout.startX, layout.startX, layout.endX]
+        animation.keyTimes = [0, NSNumber(value: startPauseRatio), 1]
+        animation.duration = totalDuration
+        animation.repeatCount = 1
+        animation.isRemovedOnCompletion = false
+        animation.fillMode = .forwards
+        animation.timingFunctions = [
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .linear)
+        ]
+        textLayer.add(animation, forKey: "innerMarquee")
+    }
+
+    private func startReverseInnerMarquee(on textLayer: CATextLayer, from currentX: CGFloat, to startX: CGFloat) {
+        textLayer.removeAnimation(forKey: "innerMarquee")
+        textLayer.removeAnimation(forKey: "innerReverseMarquee")
+        applyInnerTranslation(startX, to: textLayer)
+        let distance = abs(currentX - startX)
+        let duration = max(0.15, TimeInterval(distance / 40))
+        let animation = CABasicAnimation(keyPath: "transform.translation.x")
+        animation.fromValue = currentX
+        animation.toValue = startX
+        animation.duration = duration
+        animation.isRemovedOnCompletion = false
+        animation.fillMode = .forwards
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        textLayer.add(animation, forKey: "innerReverseMarquee")
+    }
+
+    private func applyInnerTranslation(_ translationX: CGFloat, to textLayer: CATextLayer) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        textLayer.setAffineTransform(CGAffineTransform(translationX: translationX, y: 0))
+        CATransaction.commit()
+    }
+
+    private func currentInnerTranslation(for textLayer: CATextLayer) -> CGFloat {
+        if let presentation = textLayer.presentation(),
+           let value = presentation.value(forKeyPath: "transform.translation.x") as? NSNumber {
+            return CGFloat(truncating: value)
+        }
+        return textLayer.affineTransform().tx
     }
 }

@@ -4,9 +4,9 @@ import XCTest
 final class MarqueeContentControllerTests: XCTestCase {
     func testBuildsSnapshotFromNonEmptySegments() {
         let snapshot = MarqueeContentController.makeSnapshot(from: [
-            MarqueeSegment(prefixText: nil, text: "barsaver", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil),
-            MarqueeSegment(prefixText: nil, text: "   ", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil),
-            MarqueeSegment(prefixText: "BBC", text: "Headline", actionURL: nil, slotWidth: 360, allowsInnerScroll: true, innerScrollPause: 0.9)
+            MarqueeSegment(blockID: UUID(), prefixText: nil, text: "barsaver", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil),
+            MarqueeSegment(blockID: UUID(), prefixText: nil, text: "   ", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil),
+            MarqueeSegment(blockID: UUID(), prefixText: "BBC", text: "Headline", actionURL: nil, slotWidth: 360, allowsInnerScroll: true, innerScrollPause: 0.9)
         ])
 
         XCTAssertEqual(snapshot.segments.count, 2)
@@ -16,7 +16,7 @@ final class MarqueeContentControllerTests: XCTestCase {
 
     func testBuildsFallbackSnapshotWhenAllSegmentsAreEmpty() {
         let snapshot = MarqueeContentController.makeSnapshot(from: [
-            MarqueeSegment(prefixText: nil, text: " ", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+            MarqueeSegment(blockID: UUID(), prefixText: nil, text: " ", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
         ])
 
         XCTAssertEqual(snapshot.segments.count, 1)

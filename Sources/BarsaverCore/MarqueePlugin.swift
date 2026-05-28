@@ -6,6 +6,7 @@ struct MarqueePluginContext {
 }
 
 struct MarqueeSegment {
+    let blockID: UUID
     let prefixText: String?
     let text: String
     let actionURL: URL?
@@ -20,9 +21,14 @@ protocol MarqueeBlockPlugin {
 }
 
 protocol MarqueeBlock: AnyObject {
+    var id: UUID { get }
     var currentSegment: MarqueeSegment { get }
     func start(onUpdate: @escaping () -> Void)
     func stop()
+}
+
+protocol ManualReadModeControllable: AnyObject {
+    func setManualReadMode(_ active: Bool)
 }
 
 private final class ClosureBox {
@@ -68,10 +74,11 @@ struct MarqueePluginRegistryValue {
 }
 
 final class StaticTextBlock: MarqueeBlock {
+    let id = UUID()
     let currentSegment: MarqueeSegment
 
     init(text: String) {
-        currentSegment = MarqueeSegment(prefixText: nil, text: text, actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+        currentSegment = MarqueeSegment(blockID: id, prefixText: nil, text: text, actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
     }
 
     func start(onUpdate: @escaping () -> Void) {
@@ -90,13 +97,15 @@ struct StaticTextPlugin: MarqueeBlockPlugin {
 }
 
 final class TimestampBlock: NSObject, MarqueeBlock {
+    let id = UUID()
     private let formatter: DateFormatter
     private var timer: Timer?
-    private(set) var currentSegment = MarqueeSegment(prefixText: nil, text: "", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+    private(set) var currentSegment: MarqueeSegment
 
     init(format: String) {
         formatter = DateFormatter()
         formatter.dateFormat = format
+        currentSegment = MarqueeSegment(blockID: id, prefixText: nil, text: "", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
         super.init()
     }
 
@@ -112,7 +121,7 @@ final class TimestampBlock: NSObject, MarqueeBlock {
     }
 
     private func refresh(onUpdate: @escaping () -> Void) {
-        currentSegment = MarqueeSegment(prefixText: nil, text: formatter.string(from: Date()), actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+        currentSegment = MarqueeSegment(blockID: id, prefixText: nil, text: formatter.string(from: Date()), actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
         onUpdate()
     }
 
@@ -181,6 +190,7 @@ private final class RSSParserState: NSObject, XMLParserDelegate {
 }
 
 final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
+    let id = UUID()
     private let measurementFont = NSFont.systemFont(ofSize: 12, weight: .medium)
     private let innerScrollSpeed: CGFloat = 28
     private let rssSource: URL
@@ -196,7 +206,8 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
     private var headlines: [RSSHeadline] = []
     private var currentIndex = 0
     private var hasAppliedInitialPhaseOffset = false
-    private(set) var currentSegment = MarqueeSegment(prefixText: nil, text: "Loading headlines", actionURL: nil, slotWidth: 360, allowsInnerScroll: true, innerScrollPause: 0.9)
+    private var manualReadMode = false
+    private(set) var currentSegment: MarqueeSegment
 
     init(rssSource: URL, refreshInterval: TimeInterval, cycleInterval: TimeInterval, prefix: String, slotWidth: CGFloat, innerScrollPause: TimeInterval) {
         self.rssSource = rssSource
@@ -206,8 +217,8 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
         self.prefix = prefix
         self.slotWidth = slotWidth
         self.innerScrollPause = innerScrollPause
+        self.currentSegment = MarqueeSegment(blockID: id, prefixText: Self.normalizedPrefix(prefix), text: "Loading headlines", actionURL: nil, slotWidth: slotWidth, allowsInnerScroll: true, innerScrollPause: innerScrollPause)
         super.init()
-        self.currentSegment = MarqueeSegment(prefixText: normalizedPrefix(), text: "Loading headlines", actionURL: nil, slotWidth: slotWidth, allowsInnerScroll: true, innerScrollPause: innerScrollPause)
     }
 
     func start(onUpdate: @escaping () -> Void) {
@@ -239,7 +250,7 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
 
             DispatchQueue.main.async {
                 if data == nil {
-                    self.currentSegment = MarqueeSegment(prefixText: self.normalizedPrefix(), text: "RSS unavailable", actionURL: nil, slotWidth: self.slotWidth, allowsInnerScroll: true, innerScrollPause: self.innerScrollPause)
+                    self.currentSegment = MarqueeSegment(blockID: self.id, prefixText: self.normalizedPrefix(), text: "RSS unavailable", actionURL: nil, slotWidth: self.slotWidth, allowsInnerScroll: true, innerScrollPause: self.innerScrollPause)
                     self.invalidateCycleTimer()
                 } else if !parsedHeadlines.isEmpty {
                     let previousHeadlineTitle = self.headlines.indices.contains(self.currentIndex) ? self.headlines[self.currentIndex].title : nil
@@ -253,9 +264,11 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
                         self.currentIndex = 0
                     }
                     self.currentSegment = self.segment(for: self.headlines[self.currentIndex])
-                    self.scheduleNextHeadline()
+                    if !self.manualReadMode {
+                        self.scheduleNextHeadline()
+                    }
                 } else {
-                    self.currentSegment = MarqueeSegment(prefixText: self.normalizedPrefix(), text: "No RSS headlines", actionURL: nil, slotWidth: self.slotWidth, allowsInnerScroll: true, innerScrollPause: self.innerScrollPause)
+                    self.currentSegment = MarqueeSegment(blockID: self.id, prefixText: self.normalizedPrefix(), text: "No RSS headlines", actionURL: nil, slotWidth: self.slotWidth, allowsInnerScroll: true, innerScrollPause: self.innerScrollPause)
                     self.invalidateCycleTimer()
                 }
                 self.onUpdate?()
@@ -274,7 +287,7 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
     }
 
     private func advanceHeadline() {
-        guard !headlines.isEmpty else {
+        guard !headlines.isEmpty, !manualReadMode else {
             return
         }
         currentIndex = (currentIndex + 1) % headlines.count
@@ -285,7 +298,7 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
 
     private func scheduleNextHeadline() {
         invalidateCycleTimer()
-        guard !headlines.isEmpty else {
+        guard !headlines.isEmpty, !manualReadMode else {
             return
         }
         var duration = headlineDisplayDuration(for: currentSegment)
@@ -316,6 +329,7 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
     private func segment(for headline: RSSHeadline) -> MarqueeSegment {
         let countSuffix = headlines.isEmpty ? "" : " \(currentIndex + 1)/\(headlines.count)"
         return MarqueeSegment(
+            blockID: id,
             prefixText: normalizedPrefix(),
             text: headline.title + countSuffix,
             actionURL: headline.url,
@@ -326,6 +340,10 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
     }
 
     private func normalizedPrefix() -> String? {
+        Self.normalizedPrefix(prefix)
+    }
+
+    private static func normalizedPrefix(_ prefix: String) -> String? {
         let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
@@ -339,6 +357,20 @@ final class NewsHeadlineBlock: NSObject, MarqueeBlock, @unchecked Sendable {
         }
         let ratio = Double(hash % 1000) / 1000.0
         return ratio * min(cycleInterval * 0.6, 4.0)
+    }
+}
+
+extension NewsHeadlineBlock: ManualReadModeControllable {
+    func setManualReadMode(_ active: Bool) {
+        guard manualReadMode != active else {
+            return
+        }
+        manualReadMode = active
+        if active {
+            invalidateCycleTimer()
+        } else {
+            scheduleNextHeadline()
+        }
     }
 }
 
@@ -393,15 +425,17 @@ private struct AlphaVantageGlobalQuoteResponse: Decodable {
 }
 
 final class CryptoTickerBlock: NSObject, MarqueeBlock, @unchecked Sendable {
+    let id = UUID()
     private let symbol: String
     private let refreshInterval: TimeInterval
     private var timer: Timer?
     private var onUpdate: (() -> Void)?
-    private(set) var currentSegment = MarqueeSegment(prefixText: nil, text: "Loading ticker", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+    private(set) var currentSegment: MarqueeSegment
 
     init(symbol: String, refreshInterval: TimeInterval) {
         self.symbol = symbol.uppercased()
         self.refreshInterval = refreshInterval
+        self.currentSegment = MarqueeSegment(blockID: id, prefixText: nil, text: "Loading ticker", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
         super.init()
     }
 
@@ -418,7 +452,7 @@ final class CryptoTickerBlock: NSObject, MarqueeBlock, @unchecked Sendable {
 
     private func refresh() {
         guard let pair = currencyPair(from: symbol) else {
-            currentSegment = MarqueeSegment(prefixText: nil, text: symbol, actionURL: tradingViewURL(for: symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+            currentSegment = MarqueeSegment(blockID: id, prefixText: nil, text: symbol, actionURL: tradingViewURL(for: symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
             onUpdate?()
             return
         }
@@ -435,7 +469,7 @@ final class CryptoTickerBlock: NSObject, MarqueeBlock, @unchecked Sendable {
             }
 
             DispatchQueue.main.async {
-                self.currentSegment = MarqueeSegment(prefixText: nil, text: text, actionURL: self.tradingViewURL(for: self.symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+                self.currentSegment = MarqueeSegment(blockID: self.id, prefixText: nil, text: text, actionURL: self.tradingViewURL(for: self.symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
                 self.onUpdate?()
             }
         }.resume()
@@ -474,17 +508,19 @@ struct CryptoTickerPlugin: MarqueeBlockPlugin {
 }
 
 final class StockTickerBlock: NSObject, MarqueeBlock, @unchecked Sendable {
+    let id = UUID()
     private let symbol: String
     private let refreshInterval: TimeInterval
     private let apiKey: String?
     private var timer: Timer?
     private var onUpdate: (() -> Void)?
-    private(set) var currentSegment = MarqueeSegment(prefixText: nil, text: "Loading stock", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+    private(set) var currentSegment: MarqueeSegment
 
     init(symbol: String, refreshInterval: TimeInterval, apiKey: String?) {
         self.symbol = symbol.uppercased()
         self.refreshInterval = refreshInterval
         self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.currentSegment = MarqueeSegment(blockID: id, prefixText: nil, text: "Loading stock", actionURL: nil, slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
         super.init()
     }
 
@@ -501,7 +537,7 @@ final class StockTickerBlock: NSObject, MarqueeBlock, @unchecked Sendable {
 
     private func refresh() {
         guard let apiKey, !apiKey.isEmpty else {
-            currentSegment = MarqueeSegment(prefixText: nil, text: "\(symbol) set ALPHA_VANTAGE_API_KEY", actionURL: tradingViewURL(for: symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+            currentSegment = MarqueeSegment(blockID: id, prefixText: nil, text: "\(symbol) set ALPHA_VANTAGE_API_KEY", actionURL: tradingViewURL(for: symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
             onUpdate?()
             return
         }
@@ -530,7 +566,7 @@ final class StockTickerBlock: NSObject, MarqueeBlock, @unchecked Sendable {
             }
 
             DispatchQueue.main.async {
-                self.currentSegment = MarqueeSegment(prefixText: nil, text: text, actionURL: self.tradingViewURL(for: self.symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
+                self.currentSegment = MarqueeSegment(blockID: self.id, prefixText: nil, text: text, actionURL: self.tradingViewURL(for: self.symbol), slotWidth: nil, allowsInnerScroll: false, innerScrollPause: nil)
                 self.onUpdate?()
             }
         }.resume()

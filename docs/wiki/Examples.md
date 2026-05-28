@@ -3,7 +3,7 @@
 ## Minimal
 
 ```yaml
-hold_to_click_key: option
+hold_to_click_key: escape
 display_selection: all
 
 blocks:
@@ -16,7 +16,7 @@ blocks:
 ## News Lane
 
 ```yaml
-hold_to_click_key: option
+hold_to_click_key: escape
 display_selection: external
 
 blocks:
@@ -42,7 +42,7 @@ blocks:
 ## Mixed Market Bar
 
 ```yaml
-hold_to_click_key: option
+hold_to_click_key: escape
 display_selection: 1
 
 blocks:

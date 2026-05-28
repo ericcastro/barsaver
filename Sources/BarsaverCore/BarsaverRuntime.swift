@@ -3,7 +3,7 @@ import AppKit
 @MainActor
 public final class BarsaverRuntime: NSObject {
     private let contentController: MarqueeContentController
-    private let holdToClickModifier: NSEvent.ModifierFlags?
+    private let holdToClickBinding: HoldToClickBinding?
     private var overlays: [CGDirectDisplayID: OverlayController] = [:]
     private var selectedDisplayIDs: Set<CGDirectDisplayID> = []
     private var mouseTracker: MouseTracker?
@@ -20,7 +20,7 @@ public final class BarsaverRuntime: NSObject {
     public init(configuration: MarqueeConfigurationFile, selection: DisplaySelection) throws {
         self.selection = selection
         self.contentController = MarqueeContentController(blocks: try MarqueePluginRegistryValue().makeBlocks(from: configuration.blocks))
-        self.holdToClickModifier = InteractionConfiguration.modifierFlags(for: configuration.settings["hold_to_click_key"])
+        self.holdToClickBinding = InteractionConfiguration.binding(for: configuration.settings["hold_to_click_key"])
         super.init()
     }
 
@@ -65,10 +65,16 @@ public final class BarsaverRuntime: NSObject {
         for display in selectedDisplays {
             if let overlay = overlays[display.displayID] {
                 overlay.refresh(display: display)
-                overlay.setHoldToClickModifier(holdToClickModifier)
+                overlay.setHoldToClickBinding(holdToClickBinding)
+                overlay.onInteractiveSegmentHover = { [weak self] blockID, active in
+                    self?.contentController.setManualReadMode(for: blockID, active: active)
+                }
             } else {
                 let overlay = OverlayController(display: display)
-                overlay.setHoldToClickModifier(holdToClickModifier)
+                overlay.setHoldToClickBinding(holdToClickBinding)
+                overlay.onInteractiveSegmentHover = { [weak self] blockID, active in
+                    self?.contentController.setManualReadMode(for: blockID, active: active)
+                }
                 overlays[display.displayID] = overlay
             }
         }
@@ -83,7 +89,7 @@ public final class BarsaverRuntime: NSObject {
     }
 
     private func startMouseTracking() {
-        mouseTracker = MouseTracker(holdToClickModifier: holdToClickModifier, holdHandler: { [weak self] active in
+        mouseTracker = MouseTracker(holdToClickBinding: holdToClickBinding, holdHandler: { [weak self] active in
             self?.overlays.values.forEach { $0.setHoldToClickActive(active) }
         }) { [weak self] displayID, shouldReveal in
             self?.overlays[displayID]?.setRevealed(shouldReveal, animated: true)

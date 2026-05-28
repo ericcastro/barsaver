@@ -1,24 +1,31 @@
 import AppKit
 
+public enum HoldToClickBinding: Equatable {
+    case modifier(NSEvent.ModifierFlags)
+    case keyCode(UInt16)
+}
+
 public enum InteractionConfiguration {
-    public static func modifierFlags(for value: String?) -> NSEvent.ModifierFlags? {
+    public static func binding(for value: String?) -> HoldToClickBinding? {
         guard let value else {
-            return .option
+            return .keyCode(53)
         }
 
         switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "escape", "esc":
+            return .keyCode(53)
         case "option", "alt":
-            return .option
+            return .modifier(.option)
         case "command", "cmd":
-            return .command
+            return .modifier(.command)
         case "control", "ctrl":
-            return .control
+            return .modifier(.control)
         case "shift":
-            return .shift
+            return .modifier(.shift)
         case "capslock", "caps":
-            return .capsLock
+            return .modifier(.capsLock)
         case "fn", "function":
-            return .function
+            return .modifier(.function)
         default:
             return nil
         }

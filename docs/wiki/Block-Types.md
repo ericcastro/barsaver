@@ -55,6 +55,7 @@ Notes:
 - each `news_headline` block is independent
 - each block manages its own fetch, cycle timing, and animation state
 - clickable headline text opens the article URL
+- while `hold_to_click_key` is active and the pointer hovers the headline slot, that block pauses its next-headline timer and scrolls back for easier rereading
 
 ## `crypto_ticker`
 

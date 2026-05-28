@@ -107,7 +107,7 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let config = MarqueeConfigurationFile(
-            settings: ["hold_to_click_key": "option", "display_selection": "all"],
+            settings: ["hold_to_click_key": "escape", "display_selection": "all"],
             blocks: [
                 MarqueeBlockDefinition(type: "static_text", settings: ["value": "barsaver"]),
                 MarqueeBlockDefinition(type: "timestamp", settings: ["format": "HH:mm"]),

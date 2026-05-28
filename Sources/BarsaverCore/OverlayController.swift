@@ -7,6 +7,7 @@ final class OverlayController {
     private var window: NSPanel?
     private var isRevealed = false
     private var display: DisplayInfo
+    var onInteractiveSegmentHover: ((UUID?, Bool) -> Void)?
 
     init(display: DisplayInfo, opacity: CGFloat = 1.0) {
         self.display = display
@@ -36,8 +37,8 @@ final class OverlayController {
         contentView.update(snapshot: snapshot)
     }
 
-    func setHoldToClickModifier(_ modifier: NSEvent.ModifierFlags?) {
-        contentView.setHoldToClickModifier(modifier)
+    func setHoldToClickBinding(_ binding: HoldToClickBinding?) {
+        contentView.setHoldToClickBinding(binding)
     }
 
     func setHoldToClickActive(_ active: Bool) {
@@ -87,6 +88,9 @@ final class OverlayController {
         contentView.prepareForDisplay(size: frame.size)
         contentView.onOpenURL = { url in
             NSWorkspace.shared.open(url)
+        }
+        contentView.onInteractiveSegmentHover = { [weak self] blockID, active in
+            self?.onInteractiveSegmentHover?(blockID, active)
         }
         panel.orderFrontRegardless()
         window = panel

@@ -43,7 +43,7 @@ enum MarqueeConfigurationError: LocalizedError {
 
 public enum MarqueeConfiguration {
     static let defaultSettings: [String: String] = [
-        "hold_to_click_key": "option",
+        "hold_to_click_key": "escape",
         "display_selection": "all"
     ]
 

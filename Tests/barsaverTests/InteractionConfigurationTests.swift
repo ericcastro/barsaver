@@ -4,14 +4,15 @@ import XCTest
 
 final class InteractionConfigurationTests: XCTestCase {
     func testMapsKnownModifierNames() {
-        XCTAssertEqual(InteractionConfiguration.modifierFlags(for: "option"), .option)
-        XCTAssertEqual(InteractionConfiguration.modifierFlags(for: "cmd"), .command)
-        XCTAssertEqual(InteractionConfiguration.modifierFlags(for: "ctrl"), .control)
-        XCTAssertEqual(InteractionConfiguration.modifierFlags(for: "shift"), .shift)
+        XCTAssertEqual(InteractionConfiguration.binding(for: "option"), .modifier(.option))
+        XCTAssertEqual(InteractionConfiguration.binding(for: "cmd"), .modifier(.command))
+        XCTAssertEqual(InteractionConfiguration.binding(for: "ctrl"), .modifier(.control))
+        XCTAssertEqual(InteractionConfiguration.binding(for: "shift"), .modifier(.shift))
     }
 
-    func testDefaultsToOptionAndRejectsUnknownValues() {
-        XCTAssertEqual(InteractionConfiguration.modifierFlags(for: nil), .option)
-        XCTAssertNil(InteractionConfiguration.modifierFlags(for: "banana"))
+    func testDefaultsToEscapeAndRejectsUnknownValues() {
+        XCTAssertEqual(InteractionConfiguration.binding(for: nil), .keyCode(53))
+        XCTAssertEqual(InteractionConfiguration.binding(for: "escape"), .keyCode(53))
+        XCTAssertNil(InteractionConfiguration.binding(for: "banana"))
     }
 }

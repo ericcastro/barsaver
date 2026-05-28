@@ -130,7 +130,7 @@ The marquee is built from a list of blocks. If no config file is provided, `bars
 The config format is YAML:
 
 ```yaml
-hold_to_click_key: option
+hold_to_click_key: escape
 display_selection: all
 
 blocks:
@@ -163,7 +163,7 @@ Each item in `blocks` creates one scrolling block. The `type` field selects the 
 Top-level settings currently supported:
 
 - `hold_to_click_key`
-  Holds the overlay visible so links can be clicked without auto-hide kicking in. Supported values: `option`, `command`, `control`, `shift`, `capslock`, `fn`.
+  Holds the overlay visible so links can be clicked without auto-hide kicking in. Supported values: `escape`, `option`, `command`, `control`, `shift`, `capslock`, `fn`.
 - `display_selection`
   Default display target for the shared runtime. Supported values: `all`, `external`, or a comma-separated index list such as `1,2`.
 
@@ -186,9 +186,11 @@ For `stock_ticker`, provide an Alpha Vantage API key either:
 - in the block as `api_key: "..."`, or
 - via the `ALPHA_VANTAGE_API_KEY` environment variable
 
-Because the overlay normally auto-hides as the pointer approaches the menu bar, hold the configured modifier key to keep the bar visible long enough to click it. While that modifier is held and the pointer is over the bar, the marquee pauses to make links easier to target.
+Because the overlay normally auto-hides as the pointer approaches the menu bar, hold the configured key to keep the bar visible long enough to click it. While that key is held and the pointer is over the bar, the marquee pauses to make links easier to target.
 
 Clickable `news_headline` text is yellow by default and turns cyan while hovered. Pinned prefixes stay white. Other actionable blocks remain white and switch cursor on hover.
+
+When `hold_to_click_key` is active and the pointer hovers a `news_headline`, that block enters a temporary read mode: its next-headline timer is paused, and if the headline had already reached its far-end resting position it scrolls back so it can be read again from the start. Normal scrolling and headline rotation resume when the pointer leaves.
 
 For fixed-width nested scrolling blocks such as `news_headline`, these settings are also available:
 
