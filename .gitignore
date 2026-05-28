@@ -1,7 +1,6 @@
 .DS_Store
 barsaver.yaml
 barsaver.yml
-barsaver.conf
 
 .build/
 .swiftpm/
